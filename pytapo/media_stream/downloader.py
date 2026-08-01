@@ -3,6 +3,7 @@ import aiofiles
 import json
 import os
 import hashlib
+import time
 from datetime import datetime
 from json import JSONDecodeError
 from pytapo import Tapo
@@ -26,6 +27,7 @@ class Downloader:
         window_size=None,  # affects download speed, with higher values camera sometimes stops sending data
         fileName=None,
         stall_timeout=None,
+        progressInterval=1.0,  # minimum seconds between progress updates
     ):
         self.tapo = tapo
         self.startTime = startTime
@@ -48,6 +50,8 @@ class Downloader:
         self.stall_timeout = (
             self.STALL_TIMEOUT_SECONDS if stall_timeout is None else int(stall_timeout)
         )
+        self.progressInterval = float(progressInterval)
+        self._last_progress_time = 0.0
 
     async def md5(self, fileName):
         if os.path.isfile(fileName):
@@ -160,6 +164,7 @@ class Downloader:
                     else:
                         currentAction = "Downloading"
                     downloadedFull = False
+                    detectedLength = 0
                     stream = mediaSession.transceive(payload)
                     while True:
                         try:
@@ -186,27 +191,34 @@ class Downloader:
                                 resp.audioPayloadType,
                                 self.audio_sample_rate,
                             )
-                            detectedLength = convert.getLength()
-                            if detectedLength is False:
-                                yield {
-                                    "currentAction": currentAction,
-                                    "fileName": fileName,
-                                    "progress": 0,
-                                    "total": segmentLength,
-                                }
-                                detectedLength = 0
-                            else:
-                                yield {
-                                    "currentAction": currentAction,
-                                    "fileName": fileName,
-                                    "progress": detectedLength,
-                                    "total": segmentLength,
-                                }
+                            now = time.time()
+                            if now - self._last_progress_time >= self.progressInterval:
+                                detectedLength = convert.getLength()
+                                self._last_progress_time = now
+                                if detectedLength is False:
+                                    yield {
+                                        "currentAction": currentAction,
+                                        "fileName": fileName,
+                                        "progress": 0,
+                                        "total": segmentLength,
+                                    }
+                                    detectedLength = 0
+                                else:
+                                    yield {
+                                        "currentAction": currentAction,
+                                        "fileName": fileName,
+                                        "progress": detectedLength,
+                                        "total": segmentLength,
+                                    }
                             if (detectedLength > segmentLength + self.padding) or (
                                 retry
                                 and detectedLength
                                 >= segmentLength  # fix for the latest latest recording
                             ):
+                                if detectedLength == 0:
+                                    detectedLength = convert.getLength()
+                                    if detectedLength is False:
+                                        detectedLength = 0
                                 downloadedFull = True
                                 currentAction = "Converting"
                                 yield {
