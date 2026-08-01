@@ -164,7 +164,7 @@ class TSReader:
         if self.i != 0:
             self.b = self.b[self.PacketSize :]
             self.i = 0
-            self.s = self
+            self.s = self.PacketSize
 
         # if packet available
         if len(self.b) < self.PacketSize:
