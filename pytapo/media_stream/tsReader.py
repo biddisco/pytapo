@@ -13,7 +13,9 @@ class TSReader:
     def __init__(self):
         pass
 
-    def setBuffer(self, body: bytearray):
+    def setBuffer(self, body):
+        # Accept any bytes-like buffer (bytes, bytearray, memoryview) to avoid
+        # the cost of converting each response to a Python list in the hot path.
         self.b = body
         self.i = 0
         self.s = self.PacketSize
